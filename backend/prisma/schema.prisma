@@ -1,0 +1,300 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [unaccent]
+}
+
+// ==========================================
+// USER & ADDRESSES
+// ==========================================
+
+model Users {
+  UserID       String   @id @default(uuid())
+  Username     String   @unique
+  FirstName    String
+  LastName     String
+  Email        String   @unique
+  Phone        String   @unique
+  PasswordHash String
+  Avatar       String?
+  Role         String   @default("USER") // GUEST, USER, ADMIN
+  Status       String   @default("ACTIVE") // ACTIVE, LOCKED
+  CreatedAt    DateTime @default(now())
+
+  addresses  AddressesCustomer[]
+  orders     Orders[]
+  cartCopies CartBookCopies[]
+  reviews    Reviews[]
+  blogPosts  BlogPosts[]
+  likes      Likes[]
+}
+
+model AddressesCustomer {
+  UserID  String
+  Address String
+
+  user Users @relation(fields: [UserID], references: [UserID], onDelete: Cascade)
+
+  @@id([UserID, Address])
+}
+
+// ==========================================
+// BOOKS & METADATA
+// ==========================================
+
+model Categories {
+  CategoryID String @id @default(uuid())
+  Name       String @unique
+
+  bookCategories BookCategories[]
+}
+
+model Authors {
+  AuthorID String @id @default(uuid())
+  Name     String @unique
+
+  bookAuthors BookAuthors[]
+}
+
+model Publishers {
+  PublisherID String @id @default(uuid())
+  Name        String @unique
+
+  books Books[]
+}
+
+model Books {
+  BookID        String   @id @default(uuid())
+  PublisherID   String
+  Title         String
+  AgeGroup      String?
+  Description   String?  @db.Text
+  CoverImage    String?
+  Status        String   @default("AVAILABLE")
+  IsRecommended Boolean  @default(false)
+  CreatedAt     DateTime @default(now())
+
+  publisher      Publishers       @relation(fields: [PublisherID], references: [PublisherID], onDelete: Restrict)
+  bookAuthors    BookAuthors[]
+  bookCategories BookCategories[]
+  copies         BookCopies[]
+  reviews        Reviews[]
+  blogPosts      BlogPosts[]
+
+  @@index([Title])
+}
+
+model BookAuthors {
+  BookID   String
+  AuthorID String
+
+  book   Books   @relation(fields: [BookID], references: [BookID], onDelete: Cascade)
+  author Authors @relation(fields: [AuthorID], references: [AuthorID], onDelete: Cascade)
+
+  @@id([BookID, AuthorID])
+}
+
+model BookCategories {
+  BookID     String
+  CategoryID String
+
+  book     Books      @relation(fields: [BookID], references: [BookID], onDelete: Cascade)
+  category Categories @relation(fields: [CategoryID], references: [CategoryID], onDelete: Cascade)
+
+  @@id([BookID, CategoryID])
+}
+
+// ==========================================
+// BOOK COPIES (INVENTORY & UNIQUE CONDITION)
+// ==========================================
+
+model BookCopies {
+  CopyID            String   @id @default(uuid())
+  BookID            String
+  ConditionPercent  Int
+  DamageDescription String?  @db.Text
+  Price             Decimal  @db.Decimal(12, 2)
+  Status            String   @default("AVAILABLE") // AVAILABLE, RESERVED, SOLD
+  CreatedAt         DateTime @default(now())
+
+  book              Books               @relation(fields: [BookID], references: [BookID], onDelete: Cascade)
+  images            ImagesBookCopies[]
+  orderBookCopies   OrderBookCopies[]
+  orderCopyServices OrderCopyServices[]
+  cartBookCopies    CartBookCopies[]
+
+  @@index([Price])
+  @@index([ConditionPercent])
+}
+
+model ImagesBookCopies {
+  CopyID   String
+  ImageUrl String
+
+  copy BookCopies @relation(fields: [CopyID], references: [CopyID], onDelete: Cascade)
+
+  @@id([CopyID, ImageUrl])
+}
+
+// ==========================================
+// SERVICES & ORDERS
+// ==========================================
+
+model Services {
+  ServiceID String  @id @default(uuid())
+  Name      String
+  Price     Decimal @db.Decimal(12, 2)
+  IsActive  Boolean @default(true)
+
+  orderCopyServices OrderCopyServices[]
+}
+
+model Orders {
+  OrderID     String   @id @default(uuid())
+  UserID      String
+  OrderCode   String   @unique
+  Status      String   @default("PENDING")
+  TotalAmount Decimal  @db.Decimal(12, 2)
+  Date        DateTime @default(now()) @db.Date
+  Time        DateTime @default(now()) @db.Time
+
+  user Users @relation(fields: [UserID], references: [UserID], onDelete: Restrict)
+
+  orderBookCopies   OrderBookCopies[]
+  orderCopyServices OrderCopyServices[]
+  payment           Payments?
+  delivery          Delivery?
+  statusHistory     OrderStatusHistory[]
+}
+
+model OrderBookCopies {
+  OrderID      String
+  CopyID       String
+  PriceAtOrder Decimal @db.Decimal(12, 2)
+
+  order Orders     @relation(fields: [OrderID], references: [OrderID], onDelete: Cascade)
+  copy  BookCopies @relation(fields: [CopyID], references: [CopyID], onDelete: Restrict)
+
+  @@id([OrderID, CopyID])
+}
+
+model OrderCopyServices {
+  OrderID             String
+  CopyID              String
+  ServiceID           String
+  PriceAtOrderService Decimal @db.Decimal(12, 2)
+  Message             String?
+
+  order   Orders     @relation(fields: [OrderID], references: [OrderID], onDelete: Cascade)
+  copy    BookCopies @relation(fields: [CopyID], references: [CopyID], onDelete: Cascade)
+  service Services   @relation(fields: [ServiceID], references: [ServiceID], onDelete: Restrict)
+
+  @@id([OrderID, CopyID, ServiceID])
+}
+
+model Payments {
+  PayID         String    @id @default(uuid())
+  OrderID       String    @unique
+  Method        String    // COD, BANK_TRANSFER
+  PaymentStatus String    @default("PENDING") // PENDING, PAID, FAILED
+  Amount        Decimal   @db.Decimal(12, 2)
+  ConfirmedAt   DateTime?
+
+  order Orders @relation(fields: [OrderID], references: [OrderID], onDelete: Cascade)
+}
+
+model Delivery {
+  DeliveryID       String    @id @default(uuid())
+  OrderID          String    @unique
+  RecipientName    String
+  RecipientPhone   String
+  RecipientAddress String
+  DeliveryNote     String?
+  ShippingFee      Decimal   @default(0) @db.Decimal(12, 2)
+  TrackingCode     String?
+  ShippingStatus   String    @default("PENDING")
+  HandedOverAt     DateTime?
+  DeliveredAt      DateTime?
+
+  order Orders @relation(fields: [OrderID], references: [OrderID], onDelete: Cascade)
+}
+
+model OrderStatusHistory {
+  StatusID  String   @id @default(uuid())
+  OrderID   String
+  Timestamp DateTime @default(now())
+  Status    String
+  Note      String?
+
+  order Orders @relation(fields: [OrderID], references: [OrderID], onDelete: Cascade)
+}
+
+// ==========================================
+// CART, REVIEWS & BLOG
+// ==========================================
+
+model CartBookCopies {
+  UserID String
+  CopyID String
+
+  user Users      @relation(fields: [UserID], references: [UserID], onDelete: Cascade)
+  copy BookCopies @relation(fields: [CopyID], references: [CopyID], onDelete: Cascade)
+
+  @@id([UserID, CopyID])
+}
+
+model Reviews {
+  ReviewsID String   @id @default(uuid())
+  UserID    String
+  BookID    String
+  Rating    Int
+  Comment   String   @db.Text
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @updatedAt
+
+  user Users @relation(fields: [UserID], references: [UserID], onDelete: Cascade)
+  book Books @relation(fields: [BookID], references: [BookID], onDelete: Cascade)
+}
+
+model BlogPosts {
+  PostID    String   @id @default(uuid())
+  BookID    String?
+  UserID    String
+  ParentID  String?
+  Content   String   @db.Text
+  Status    String   @default("PUBLISHED")
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @updatedAt
+
+  book     Books?      @relation(fields: [BookID], references: [BookID], onDelete: SetNull)
+  user     Users       @relation(fields: [UserID], references: [UserID], onDelete: Cascade)
+  parent   BlogPosts?  @relation("ParentPost", fields: [ParentID], references: [PostID], onDelete: Cascade)
+  children BlogPosts[] @relation("ParentPost")
+
+  images ImagesBlogPosts[]
+  likes  Likes[]
+}
+
+model ImagesBlogPosts {
+  PostID   String
+  ImageUrl String
+
+  post BlogPosts @relation(fields: [PostID], references: [PostID], onDelete: Cascade)
+
+  @@id([PostID, ImageUrl])
+}
+
+model Likes {
+  UserID String
+  PostID String
+
+  user Users     @relation(fields: [UserID], references: [UserID], onDelete: Cascade)
+  post BlogPosts @relation(fields: [PostID], references: [PostID], onDelete: Cascade)
+
+  @@id([UserID, PostID])
+}
