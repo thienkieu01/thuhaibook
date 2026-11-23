@@ -24,14 +24,11 @@ export class ReviewsService {
         where: { BookID: bookId },
         include: {
           user: {
-            select: {
-              UserID: true,
-              Username: true,
-              FirstName: true,
-              LastName: true,
-              Avatar: true,
-            },
-          },
+    select: { UserID: true, Username: true, FirstName: true, LastName: true, Avatar: true },
+  },
+  copy: {
+    select: { CopyID: true, ConditionPercent: true, DamageDescription: true },
+  },
         },
         skip,
         take: limit,
@@ -64,65 +61,67 @@ export class ReviewsService {
   }
 
   // FR-35, BR-07: Tạo đánh giá mới (Kiểm tra người dùng có đơn hàng chứa bản sao thuộc đầu sách đó chưa)
-  async createReview(userId: string, dto: CreateReviewDto) {
-    // BR-07: Kiểm tra ràng buộc mua hàng qua bảng Orders & OrderBookCopies
-    const hasPurchased = await this.prisma.orders.findFirst({
-      where: {
-        UserID: userId,
-        orderBookCopies: {
-          some: {
-            copy: {
-              BookID: dto.bookId,
-            },
-          },
-        },
+  // 1. Tạo đánh giá gắn với từng bản copy đã giao thành công
+// 1. Tạo đánh giá gắn với từng bản copy đã giao thành công
+async createReview(userId: string, dto: CreateReviewDto) {
+  // Kiểm tra User có mua đúng bản CopyID này trong một đơn đã giao (COMPLETED) chưa
+  const purchasedOrder = await this.prisma.orders.findFirst({
+    where: {
+      UserID: userId,
+      Status: 'COMPLETED', // Khớp với điều kiện "đơn đã giao thành công"
+      orderBookCopies: {
+        some: { CopyID: dto.copyId },
       },
-    });
-
-    if (!hasPurchased) {
-      throw new BadRequestException(
-        'Bạn chỉ có thể đánh giá đầu sách này sau khi đã mua thành công ít nhất một bản sách thuộc đầu sách đó.',
-      );
-    }
-
-    // Kiểm tra xem người dùng đã gửi đánh giá cho đầu sách này chưa
-    const existingReview = await this.prisma.reviews.findFirst({
-      where: { UserID: userId, BookID: dto.bookId },
-    });
-
-    if (existingReview) {
-      throw new BadRequestException(
-        'Bạn đã gửi đánh giá cho đầu sách này rồi. Vui lòng sử dụng tính năng chỉnh sửa đánh giá.',
-      );
-    }
-
-    const newReview = await this.prisma.reviews.create({
-      data: {
-        UserID: userId,
-        BookID: dto.bookId,
-        Rating: dto.rating,
-        Comment: dto.comment,
+    },
+    include: {
+      orderBookCopies: {
+        where: { CopyID: dto.copyId },
+        include: { copy: true },
       },
-      include: {
-        user: {
-          select: {
-            UserID: true,
-            Username: true,
-            FirstName: true,
-            LastName: true,
-            Avatar: true,
-          },
-        },
-      },
-    });
+    },
+  });
 
-    return {
-      success: true,
-      message: 'Gửi đánh giá thành công',
-      data: newReview,
-    };
+  if (!purchasedOrder) {
+    throw new BadRequestException(
+      'Bạn chỉ có thể đánh giá bản sách này sau khi đơn hàng đã được giao thành công.',
+    );
   }
 
+  // Kiểm tra bản sao này đã được đánh giá chưa
+  const existingReview = await this.prisma.reviews.findUnique({
+    where: { CopyID: dto.copyId },
+  });
+
+  if (existingReview) {
+    throw new BadRequestException('Bản sách này đã được đánh giá trước đó.');
+  }
+
+  const bookId = purchasedOrder.orderBookCopies[0].copy.BookID;
+
+  const newReview = await this.prisma.reviews.create({
+    data: {
+      UserID: userId,
+      BookID: bookId,
+      CopyID: dto.copyId,
+      Rating: dto.rating,
+      Comment: dto.comment ?? '',
+    },
+    include: {
+      user: {
+        select: { UserID: true, Username: true, FirstName: true, LastName: true, Avatar: true },
+      },
+      copy: {
+        select: { CopyID: true, ConditionPercent: true, Price: true },
+      },
+    },
+  });
+
+  return {
+    success: true,
+    message: 'Gửi đánh giá cho bản sách thành công',
+    data: newReview,
+  };
+}
   // FR-36: Chỉnh sửa đánh giá của chính mình
   async updateReview(userId: string, reviewId: string, dto: UpdateReviewDto) {
     const review = await this.prisma.reviews.findUnique({
@@ -153,6 +152,9 @@ export class ReviewsService {
             Avatar: true,
           },
         },
+        copy: {
+        select: { CopyID: true, ConditionPercent: true, Price: true },
+      },
       },
     });
 

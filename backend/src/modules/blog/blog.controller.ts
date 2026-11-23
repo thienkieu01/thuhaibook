@@ -7,8 +7,11 @@ export class BlogController {
   constructor(private readonly blogService: BlogService) {}
 
   @Get()
-  getPosts() {
-    return this.blogService.getPosts();
+  getPosts(
+    @Query('bookId') bookId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.blogService.getPosts({ bookId, search });
   }
 
   @UseGuards(AuthGuard('jwt'))
@@ -27,6 +30,22 @@ export class BlogController {
   @Post(':id/like')
   toggleLike(@Request() req: any, @Param('id') postId: string) {
     return this.blogService.toggleLike(req.user.UserID, postId);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post(':id/report')
+  reportPost(
+    @Request() req: any,
+    @Param('id') postId: string,
+    @Body('reason') reason: string,
+  ) {
+    return this.blogService.reportPost(req.user.UserID, postId, reason);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('my-posts')
+  getMyPosts(@Request() req: any) {
+    return this.blogService.getMyPosts(req.user.UserID);
   }
 
   @Get(':id')

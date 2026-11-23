@@ -3,8 +3,8 @@ import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validat
 
 export class CreateReviewDto {
   @IsString()
-  @IsNotEmpty({ message: 'Vui lòng chọn đầu sách cần đánh giá' })
-  bookId: string;
+  @IsNotEmpty({ message: 'Vui lòng chọn bản sách cần đánh giá' })
+  copyId: string;
 
   @IsInt({ message: 'Số sao đánh giá phải là số nguyên' })
   @Min(1, { message: 'Đánh giá tối thiểu là 1 sao' })
@@ -12,8 +12,8 @@ export class CreateReviewDto {
   rating: number;
 
   @IsString()
-  @IsNotEmpty({ message: 'Nội dung nhận xét không được để trống' })
-  comment: string;
+  @IsOptional()
+  comment?: string;
 }
 
 export class UpdateReviewDto {
@@ -23,8 +23,8 @@ export class UpdateReviewDto {
   rating: number;
 
   @IsString()
-  @IsNotEmpty({ message: 'Nội dung nhận xét không được để trống' })
-  comment: string;
+   @IsOptional()
+  comment?: string;
 }
 
 export class GetReviewsQueryDto {

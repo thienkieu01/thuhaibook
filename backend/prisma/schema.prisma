@@ -124,6 +124,7 @@ model BookCopies {
 
   book              Books               @relation(fields: [BookID], references: [BookID], onDelete: Cascade)
   images            ImagesBookCopies[]
+  review            Reviews?
   orderBookCopies   OrderBookCopies[]
   orderCopyServices OrderCopyServices[]
   cartBookCopies    CartBookCopies[]
@@ -252,6 +253,7 @@ model Reviews {
   ReviewsID String   @id @default(uuid())
   UserID    String
   BookID    String
+  CopyID    String   @unique
   Rating    Int
   Comment   String   @db.Text
   CreatedAt DateTime @default(now())
@@ -259,6 +261,7 @@ model Reviews {
 
   user Users @relation(fields: [UserID], references: [UserID], onDelete: Cascade)
   book Books @relation(fields: [BookID], references: [BookID], onDelete: Cascade)
+  copy BookCopies @relation(fields: [CopyID], references: [CopyID], onDelete: Cascade)
 }
 
 model BlogPosts {

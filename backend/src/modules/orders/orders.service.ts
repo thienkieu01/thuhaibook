@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/order.dto';
+import { ShippingWebhookDto } from './dto/shipping.dto';
 
 @Injectable()
 export class OrdersService {
@@ -200,4 +201,110 @@ export class OrdersService {
       return { success: true, message: 'Hủy đơn hàng thành công' };
     });
   }
+  // FR-16: Tính phí giao hàng theo khu vực TP.HCM
+async calculateShippingFee(address: string) {
+  const hcmRegex = /(tp\.?\s*hcm|hồ\s*chí\s*minh|ho\s*chi\s*minh|tphcm)/i;
+  if (!hcmRegex.test(address)) {
+    throw new BadRequestException('Chỉ hỗ trợ giao hàng trong địa bàn TP.HCM');
+  }
+
+  // Mô phỏng phản hồi API đơn vị vận chuyển (Nội thành vs Ngoại thành)
+  const suburbanRegex = /(củ chi|hóc môn|bình chánh|nhà bè|cần giờ|thủ đức|quận 9|quận 12|bình tân)/i;
+  const isSuburban = suburbanRegex.test(address);
+
+  const shippingFee = isSuburban ? 28000 : 18000;
+  const estimatedDays = isSuburban ? '2 - 3 ngày' : '1 - 2 ngày';
+
+  return {
+    message: 'Tính phí vận chuyển thành công',
+    data: {
+      address,
+      provider: 'Giao Hàng Nhanh (GHN)',
+      shippingFee,
+      estimatedDays,
+    },
+  };
+}
+
+// FR-18 (Phần 1): Khách hàng xem dòng thời gian trạng thái đơn hàng
+async getOrderTracking(userId: string, orderId: string) {
+  const order = await this.prisma.orders.findFirst({
+    where: { OrderID: orderId, UserID: userId },
+    include: {
+      delivery: true,
+      statusHistory: {
+        orderBy: { Timestamp: 'asc' },
+      },
+    },
+  });
+
+  if (!order) {
+    throw new NotFoundException('Không tìm thấy đơn hàng');
+  }
+
+  return {
+    message: 'Lấy thông tin vận chuyển thành công',
+    data: {
+      orderCode: order.OrderCode,
+      orderStatus: order.Status,
+      delivery: order.delivery,
+      timeline: order.statusHistory,
+    },
+  };
+}
+
+// FR-18 (Phần 2): Webhook nhận cập nhật trạng thái từ đơn vị vận chuyển
+async handleShippingWebhook(dto: ShippingWebhookDto) {
+  const order = await this.prisma.orders.findUnique({
+    where: { OrderCode: dto.orderCode },
+    include: { user: true, delivery: true },
+  });
+
+  if (!order) {
+    throw new NotFoundException(`Không tìm thấy đơn hàng với mã ${dto.orderCode}`);
+  }
+
+  const now = new Date();
+  const isDelivered = dto.shippingStatus === 'DELIVERED';
+  const isHandedOver = dto.shippingStatus === 'PICKED_UP';
+
+  await this.prisma.$transaction(async (tx) => {
+    // 1. Cập nhật bảng Delivery nếu có
+    if (order.delivery) {
+      await tx.delivery.update({
+        where: { OrderID: order.OrderID },
+        data: {
+          ShippingStatus: dto.shippingStatus,
+          ...(isHandedOver ? { HandedOverAt: now } : {}),
+          ...(isDelivered ? { DeliveredAt: now } : {}),
+        },
+      });
+    }
+
+    // 2. Đồng bộ trạng thái đơn hàng chính khi giao thành công
+    if (isDelivered) {
+      await tx.orders.update({
+        where: { OrderID: order.OrderID },
+        data: { Status: 'COMPLETED' },
+      });
+    }
+
+    // 3. Ghi lịch sử trạng thái vào OrderStatusHistory
+    await tx.orderStatusHistory.create({
+      data: {
+        OrderID: order.OrderID,
+        Status: dto.shippingStatus,
+        Note: dto.note || `Đơn vị vận chuyển cập nhật trạng thái: ${dto.shippingStatus}`,
+      },
+    });
+  });
+
+  // 4. Thông báo cho khách hàng
+  const contact = order.user.Email || order.user.Phone;
+  console.log(
+    `[FR-18 Thông báo tới ${contact}] Đơn hàng ${order.OrderCode} vừa chuyển sang trạng thái: ${dto.shippingStatus}`,
+  );
+
+  return { message: 'Cập nhật trạng thái vận chuyển thành công' };
+}
 }
