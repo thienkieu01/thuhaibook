@@ -8,13 +8,16 @@ import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateAddressDto } from './dto/address.dto';
+import { MailService } from '../../common/mail/mail.service';
+
 
 @Injectable()
 export class AuthService {
   constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
-  ) {}
+  private prisma: PrismaService,
+  private jwtService: JwtService,
+  private mailService: MailService,
+) {}
 
   async register(dto: RegisterDto) {
     const existingUser = await this.prisma.users.findFirst({
@@ -40,6 +43,17 @@ export class AuthService {
         Role: 'USER',
         Status: 'ACTIVE',
       },
+    });
+
+    
+
+    await this.mailService.sendEmailOrSms({
+      email: user.Email,
+      phone: !user.Email ? user.Phone : null,
+      subject: '[Thư Hải] Đăng ký tài khoản thành công',
+      text:
+        `Xin chào ${user.FirstName} ${user.LastName},\n` +
+        `Tài khoản "${user.Username}" của bạn tại hệ thống sách cũ Thư Hải đã được tạo thành công.`,
     });
 
     const payload = { sub: user.UserID, role: user.Role };
@@ -182,13 +196,20 @@ export class AuthService {
 
   // Giả lập gửi Email / SMS ra console để lấy mã test
   const channel = user.Email ? `Email (${user.Email})` : `SMS (${user.Phone})`;
-  console.log(`[FR-03] Đã gửi mã đặt lại mật khẩu tới ${channel}: ${resetToken}`);
 
-  return {
-    message: `Mã/liên kết đặt lại mật khẩu có hiệu lực 15 phút đã được gửi qua ${channel}`,
-    // Trả về token mẫu khi dev để tiện test trên Postman
-    devResetToken: resetToken,
-  };
+await this.mailService.notifyUser({
+  email: user.Email,
+  phone: !user.Email ? user.Phone : null,
+  subject: 'Đặt lại mật khẩu tài khoản Thư Hải',
+  text:
+    `Xin chào ${user.FirstName} ${user.LastName},\n` +
+    `Mã đặt lại mật khẩu của bạn (có hiệu lực trong 15 phút) là:\n${resetToken}`,
+});
+
+return {
+  message: `Mã/liên kết đặt lại mật khẩu có hiệu lực 15 phút đã được gửi qua ${channel}`,
+  ...(process.env.NODE_ENV !== 'production' ? { devResetToken: resetToken } : {}),
+};
 }
 
 async resetPassword(dto: ResetPasswordDto) {

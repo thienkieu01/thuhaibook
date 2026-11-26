@@ -9,6 +9,8 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { BlogModule } from './modules/blog/blog.module';
 import { ContactModule } from './modules/contact/contact.module';
+import { MailModule } from './common/mail/mail.module';
+import { Mail } from 'nodemailer';
 
 @Module({
   imports: [
@@ -20,6 +22,7 @@ import { ContactModule } from './modules/contact/contact.module';
     ReviewsModule,
     BlogModule,
     ContactModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [AppService],
