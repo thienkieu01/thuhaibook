@@ -2,31 +2,87 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FilterBookDto } from './dto/filter-book.dto';
 
+function normalizeVietnamese(text?: string | null): string {
+  if (!text) return '';
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+}
+
 @Injectable()
 export class BooksService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(query: FilterBookDto) {
+    const rawQuery = query as any;
     const {
       search,
       categoryId,
       authorId,
       publisherId,
       ageGroup,
-      minPrice,
-      maxPrice,
-      minCondition,
-      page = 1,
-      limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
     } = query;
 
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.max(1, Number(query.limit) || 10);
     const skip = (page - 1) * limit;
 
-    // Đơn hàng điều kiện tìm kiếm
+    const minPrice =
+      query.minPrice !== undefined && query.minPrice !== null && String(query.minPrice) !== ''
+        ? Number(query.minPrice)
+        : undefined;
+    const maxPrice =
+      query.maxPrice !== undefined && query.maxPrice !== null && String(query.maxPrice) !== ''
+        ? Number(query.maxPrice)
+        : undefined;
+    const minCondition =
+      query.minCondition !== undefined && query.minCondition !== null && String(query.minCondition) !== ''
+        ? Number(query.minCondition)
+        : undefined;
+    const maxCondition =
+      rawQuery.maxCondition !== undefined && rawQuery.maxCondition !== null && String(rawQuery.maxCondition) !== ''
+        ? Number(rawQuery.maxCondition)
+        : undefined;
+
+    const sortBy = String(rawQuery.sortBy || 'createdAt');
+    const sortOrder: 'asc' | 'desc' =
+      String(rawQuery.sortOrder || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+    const rawIsRecommended = rawQuery.isRecommended;
+    const isRecommendedFilter =
+      rawIsRecommended === true || rawIsRecommended === 'true'
+        ? true
+        : rawIsRecommended === false || rawIsRecommended === 'false'
+          ? false
+          : undefined;
+
+    const conditionRangeFilter =
+      minCondition !== undefined || maxCondition !== undefined
+        ? {
+            ConditionPercent: {
+              ...(minCondition !== undefined && { gte: minCondition }),
+              ...(maxCondition !== undefined && { lte: maxCondition }),
+            },
+          }
+        : {};
+
+    const priceRangeFilter =
+      minPrice !== undefined || maxPrice !== undefined
+        ? {
+            Price: {
+              ...(minPrice !== undefined && { gte: minPrice }),
+              ...(maxPrice !== undefined && { lte: maxPrice }),
+            },
+          }
+        : {};
+
     const whereCondition: any = {
       Status: 'AVAILABLE',
+      ...(isRecommendedFilter !== undefined && { IsRecommended: isRecommendedFilter }),
       ...(publisherId && { PublisherID: publisherId }),
       ...(ageGroup && { AgeGroup: ageGroup }),
       ...(categoryId && {
@@ -35,56 +91,71 @@ export class BooksService {
       ...(authorId && {
         bookAuthors: { some: { AuthorID: authorId } },
       }),
-      // FR-13: Tìm theo tên sách hoặc tên tác giả
-      ...(search && {
-        OR: [
-          { Title: { contains: search, mode: 'insensitive' } },
-          {
-            bookAuthors: {
-              some: {
-                author: { Name: { contains: search, mode: 'insensitive' } },
-              },
-            },
-          },
-        ],
-      }),
-      // BR-12 & FR-12: Chỉ lấy Đầu sách có ít nhất 1 Bản sách đang AVAILABLE
       copies: {
         some: {
           Status: 'AVAILABLE',
-          ...(minPrice || maxPrice
-            ? {
-                Price: {
-                  ...(minPrice && { gte: minPrice }),
-                  ...(maxPrice && { lte: maxPrice }),
-                },
-              }
-            : {}),
-          ...(minCondition && { ConditionPercent: { gte: minCondition } }),
+          ...priceRangeFilter,
+          ...conditionRangeFilter,
         },
       },
     };
 
-    // Đếm tổng số bản ghi phục vụ Phân trang
-    const total = await this.prisma.books.count({ where: whereCondition });
-
-    // Truy vấn dữ liệu
-    const books = await this.prisma.books.findMany({
-      where: whereCondition,
-      include: {
-        publisher: true,
-        bookAuthors: { include: { author: true } },
-        bookCategories: { include: { category: true } },
-        copies: {
-          where: { Status: 'AVAILABLE' },
-          include: { images: true },
-          orderBy: { Price: 'asc' },
-        },
+    const includeConfig = {
+      publisher: true,
+      bookAuthors: { include: { author: true } },
+      bookCategories: { include: { category: true } },
+      copies: {
+        where: { Status: 'AVAILABLE' },
+        include: { images: true },
+        orderBy: { Price: 'asc' as const },
       },
-      skip,
-      take: limit,
-      orderBy: sortBy === 'createdAt' ? { CreatedAt: sortOrder } : undefined,
+    };
+
+    const normalizedSearch = normalizeVietnamese(search);
+
+    let matchedBooks = await this.prisma.books.findMany({
+      where: whereCondition,
+      include: includeConfig,
+      orderBy: sortBy === 'createdAt' ? { CreatedAt: sortOrder } : { CreatedAt: 'desc' },
     });
+
+    if (normalizedSearch) {
+      matchedBooks = matchedBooks.filter((book: any) => {
+        const titleMatch = normalizeVietnamese(book.Title).includes(normalizedSearch);
+        const authorMatch = (book.bookAuthors || []).some((ba: any) =>
+          normalizeVietnamese(ba.author?.Name).includes(normalizedSearch),
+        );
+        return titleMatch || authorMatch;
+      });
+    }
+
+    const getMinPrice = (book: any) => {
+      const prices = (book.copies || []).map((c: any) => Number(c.Price)).filter((p: number) => !Number.isNaN(p));
+      return prices.length > 0 ? Math.min(...prices) : Number.MAX_SAFE_INTEGER;
+    };
+
+    const getMaxCondition = (book: any) => {
+      const conds = (book.copies || []).map((c: any) => Number(c.ConditionPercent)).filter((v: number) => !Number.isNaN(v));
+      return conds.length > 0 ? Math.max(...conds) : -1;
+    };
+
+    if (sortBy === 'price') {
+      matchedBooks.sort((a, b) =>
+        sortOrder === 'asc' ? getMinPrice(a) - getMinPrice(b) : getMinPrice(b) - getMinPrice(a),
+      );
+    } else if (sortBy === 'condition' || sortBy === 'conditionPercent') {
+      matchedBooks.sort((a, b) =>
+        sortOrder === 'asc' ? getMaxCondition(a) - getMaxCondition(b) : getMaxCondition(b) - getMaxCondition(a),
+      );
+    } else if (sortBy === 'createdAt') {
+      matchedBooks.sort((a: any, b: any) => {
+        const diff = new Date(a.CreatedAt).getTime() - new Date(b.CreatedAt).getTime();
+        return sortOrder === 'asc' ? diff : -diff;
+      });
+    }
+
+    const total = matchedBooks.length;
+    const paginatedBooks = matchedBooks.slice(skip, skip + limit);
 
     return {
       success: true,
@@ -94,7 +165,7 @@ export class BooksService {
         limit,
         totalPages: Math.ceil(total / limit),
       },
-      data: books,
+      data: paginatedBooks,
     };
   }
 
@@ -105,7 +176,6 @@ export class BooksService {
         publisher: true,
         bookAuthors: { include: { author: true } },
         bookCategories: { include: { category: true } },
-        // FR-16 & BR-12: Trả về cả bản sách để Frontend báo "Hết hàng" nếu mảng copies rỗng
         copies: {
           include: { images: true },
           orderBy: { ConditionPercent: 'desc' },

@@ -1,0 +1,329 @@
+﻿=== FILE: auth.controller.ts ===
+import { Body, Controller, Get, Delete, Patch, Post, Request, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { AuthService } from './auth.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ForgotPasswordDto, ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateAddressDto, AddressDto } from './dto/address.dto';
+
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post('register')
+  register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
+  }
+
+  @Post('login')
+  login(@Body() dto: LoginDto) {
+    return this.authService.login(dto);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('me')
+  getProfile(@Request() req: any) {
+    return {
+      message: 'Láº¥y thÃ´ng tin tÃ i khoáº£n thÃ nh cÃ´ng',
+      data: req.user,
+    };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Patch('profile')
+  updateProfile(@Request() req: any, @Body() dto: UpdateProfileDto) {
+    return this.authService.updateProfile(req.user.UserID, dto);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Patch('change-password')
+  changePassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(req.user.UserID, dto);
+  }
+  @Post('forgot-password')
+forgotPassword(@Body() dto: ForgotPasswordDto) {
+  return this.authService.forgotPassword(dto);
+}
+
+@Post('reset-password')
+resetPassword(@Body() dto: ResetPasswordDto) {
+  return this.authService.resetPassword(dto);
+}
+@UseGuards(AuthGuard('jwt'))
+@Get('addresses')
+getAddresses(@Request() req: any) {
+  return this.authService.getAddresses(req.user.UserID);
+}
+
+@UseGuards(AuthGuard('jwt'))
+@Post('addresses')
+addAddress(@Request() req: any, @Body() dto: AddressDto) {
+  return this.authService.addAddress(req.user.UserID, dto.address);
+}
+
+@UseGuards(AuthGuard('jwt'))
+@Patch('addresses')
+updateAddress(@Request() req: any, @Body() dto: UpdateAddressDto) {
+  return this.authService.updateAddress(req.user.UserID, dto);
+}
+
+@UseGuards(AuthGuard('jwt'))
+@Delete('addresses') // Nhá»› import Delete tá»« @nestjs/common
+deleteAddress(@Request() req: any, @Body() dto: AddressDto) {
+  return this.authService.deleteAddress(req.user.UserID, dto.address);
+}
+}
+=== FILE: blog.controller.ts ===
+import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { BlogService, CreateCommentInput, CreatePostInput } from './blog.service';
+
+@Controller('blog')
+export class BlogController {
+  constructor(private readonly blogService: BlogService) {}
+
+  @Get()
+  getPosts(
+    @Query('bookId') bookId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.blogService.getPosts({ bookId, search });
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('comments')
+  createComment(@Request() req: any, @Body() dto: CreateCommentInput) {
+    return this.blogService.createComment(req.user.UserID, dto);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post()
+  createPost(@Request() req: any, @Body() dto: CreatePostInput) {
+    return this.blogService.createPost(req.user.UserID, dto);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post(':id/like')
+  toggleLike(@Request() req: any, @Param('id') postId: string) {
+    return this.blogService.toggleLike(req.user.UserID, postId);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post(':id/report')
+  reportPost(
+    @Request() req: any,
+    @Param('id') postId: string,
+    @Body('reason') reason: string,
+  ) {
+    return this.blogService.reportPost(req.user.UserID, postId, reason);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('my-posts')
+  getMyPosts(@Request() req: any) {
+    return this.blogService.getMyPosts(req.user.UserID);
+  }
+
+  @Get(':id')
+  getPostDetail(@Param('id') id: string, @Query('userId') userId?: string) {
+    return this.blogService.getPostDetail(id, userId);
+  }
+}
+=== FILE: books.controller.ts ===
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { BooksService } from './books.service';
+import { FilterBookDto } from './dto/filter-book.dto';
+
+@Controller('books')
+export class BooksController {
+  constructor(private readonly booksService: BooksService) {}
+
+  // Xáº¿p route tÄ©nh /categories lÃªn TRÆ¯á»šC /:id
+  @Get('categories')
+  getCategories() {
+    return this.booksService.getCategories();
+  }
+
+  @Get()
+  findAll(@Query() query: FilterBookDto) {
+    return this.booksService.findAll(query);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.booksService.findOne(id);
+  }
+}
+=== FILE: cart.controller.ts ===
+import { Body, Controller, Delete, Get, Param, Post, Request, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { CartService } from './cart.service';
+import { AddToCartDto } from './dto/cart.dto';
+
+@Controller('cart')
+export class CartController {
+  constructor(private readonly cartService: CartService) {}
+
+  // Endpoint dá»‹ch vá»¥ Ä‘áº·t trÆ°á»›c Ä‘á»ƒ cho phÃ©p Public/User Ä‘á»u Ä‘á»c Ä‘Æ°á»£c
+  @Get('services')
+  getServices() {
+    return this.cartService.getAvailableServices();
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get()
+  getCart(@Request() req: any) {
+    return this.cartService.getCart(req.user.UserID);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post()
+  addToCart(@Request() req: any, @Body() dto: AddToCartDto) {
+    // Truyá»n chÃ­nh xÃ¡c dto.copyId dáº¡ng chuá»—i
+    return this.cartService.addToCart(req.user.UserID, dto.copyId);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Delete(':copyId')
+  removeFromCart(@Request() req: any, @Param('copyId') copyId: string) {
+    return this.cartService.removeFromCart(req.user.UserID, copyId);
+  }
+}
+=== FILE: contact.controller.ts ===
+import { Controller, Get } from '@nestjs/common';
+import { ContactService } from './contact.service';
+
+@Controller('contact-info')
+export class ContactController {
+  constructor(private readonly contactService: ContactService) {}
+
+  @Get()
+  getContactInfo() {
+    return this.contactService.getContactInfo();
+  }
+}
+=== FILE: orders.controller.ts ===
+import { Body, Controller, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { CreateOrderDto } from './dto/order.dto';
+import { OrdersService } from './orders.service';
+import { CalculateShippingDto, ShippingWebhookDto } from './dto/shipping.dto';
+
+@UseGuards(AuthGuard('jwt'))
+@Controller('orders')
+export class OrdersController {
+  constructor(private readonly ordersService: OrdersService) {}
+
+  @Post()
+  createOrder(@Request() req: any, @Body() dto: CreateOrderDto) {
+    return this.ordersService.createOrder(req.user.UserID, dto);
+  }
+
+  @Get()
+  getMyOrders(@Request() req: any) {
+    return this.ordersService.getMyOrders(req.user.UserID);
+  }
+
+  @Patch(':id/cancel')
+  cancelOrder(@Request() req: any, @Param('id') id: string) {
+    return this.ordersService.cancelOrder(req.user.UserID, id);
+  }
+  @UseGuards(AuthGuard('jwt'))
+@Post('shipping-fee')
+calculateShippingFee(@Body() dto: CalculateShippingDto) {
+  return this.ordersService.calculateShippingFee(dto.address);
+}
+
+@UseGuards(AuthGuard('jwt'))
+@Get(':id/tracking')
+getOrderTracking(@Request() req: any, @Param('id') id: string) {
+  return this.ordersService.getOrderTracking(req.user.UserID, id);
+}
+
+// Public Webhook cho Ä‘á»‘i tÃ¡c giao hÃ ng
+@Post('shipping-webhook')
+handleShippingWebhook(@Body() dto: ShippingWebhookDto) {
+  return this.ordersService.handleShippingWebhook(dto);
+}
+}
+=== FILE: reviews.controller.ts ===
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { CreateReviewDto, GetReviewsQueryDto, UpdateReviewDto } from './dto/review.dto';
+import { ReviewsService } from './reviews.service';
+
+@Controller('reviews')
+export class ReviewsController {
+  constructor(private readonly reviewsService: ReviewsService) {}
+
+  // Public API: Xem danh sÃ¡ch Ä‘Ã¡nh giÃ¡ theo BookID (FR-18)
+  @Get('book/:bookId')
+  getReviewsByBook(@Param('bookId') bookId: string, @Query() query: GetReviewsQueryDto) {
+    return this.reviewsService.getReviewsByBook(bookId, query);
+  }
+
+  // Require Login: Táº¡o Ä‘Ã¡nh giÃ¡ má»›i (FR-35, BR-07)
+  @UseGuards(AuthGuard('jwt'))
+  @Post()
+  createReview(@Request() req: any, @Body() dto: CreateReviewDto) {
+    return this.reviewsService.createReview(req.user.UserID, dto);
+  }
+
+  // Require Login: Sá»­a Ä‘Ã¡nh giÃ¡ cá»§a chÃ­nh mÃ¬nh (FR-36)
+  @UseGuards(AuthGuard('jwt'))
+  @Patch(':id')
+  updateReview(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateReviewDto) {
+    return this.reviewsService.updateReview(req.user.UserID, id, dto);
+  }
+
+  // Require Login: XÃ³a Ä‘Ã¡nh giÃ¡ cá»§a chÃ­nh mÃ¬nh (FR-36)
+  @UseGuards(AuthGuard('jwt'))
+  @Delete(':id')
+  deleteReview(@Request() req: any, @Param('id') id: string) {
+    return this.reviewsService.deleteReview(req.user.UserID, id);
+  }
+}
+=== FILE: app.controller.ts ===
+import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+}
+=== FILE: main.ts ===
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  // 1. Cho phÃ©p Frontend gá»i API (CORS)
+  app.enableCors();
+
+  // 2. Lá»c & Validate dá»¯ liá»‡u Ä‘áº§u vÃ o tá»± Ä‘á»™ng
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // 3. Khá»Ÿi táº¡o tÃ i liá»‡u Swagger OpenAPI
+  const config = new DocumentBuilder()
+    .setTitle('ThÆ° Háº£i E-Commerce API')
+    .setDescription('TÃ i liá»‡u API cho há»‡ thá»‘ng bÃ¡n sÃ¡ch cÅ© ThÆ° Háº£i')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api', app, document);
+
+  await app.listen(3000);
+}
+bootstrap();

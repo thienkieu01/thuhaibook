@@ -8,6 +8,7 @@ import { CartModule } from './modules/cart/cart.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { BlogModule } from './modules/blog/blog.module';
+import { ContactModule } from './modules/contact/contact.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { BlogModule } from './modules/blog/blog.module';
     OrdersModule,
     ReviewsModule,
     BlogModule,
+    ContactModule,
   ],
   controllers: [AppController],
   providers: [AppService],

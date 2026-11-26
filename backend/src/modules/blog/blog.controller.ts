@@ -10,8 +10,10 @@ export class BlogController {
   getPosts(
     @Query('bookId') bookId?: string,
     @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
   ) {
-    return this.blogService.getPosts({ bookId, search });
+    return this.blogService.getPosts({ bookId, search, sortBy, sortOrder });
   }
 
   @UseGuards(AuthGuard('jwt'))

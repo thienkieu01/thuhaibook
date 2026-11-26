@@ -1,0 +1,153 @@
+﻿=== FILE: auth.module.ts ===
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtStrategy } from './jwt.strategy';
+
+@Module({
+  imports: [
+    PassportModule,
+    JwtModule.register({
+      secret: process.env.JWT_SECRET || 'THU_HAI_SECRET_KEY',
+      signOptions: { expiresIn: '7d' }, // Token cÃ³ hiá»‡u lá»±c 7 ngÃ y
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy],
+  exports: [AuthService],
+})
+export class AuthModule {}
+=== FILE: blog.module.ts ===
+import { Module } from '@nestjs/common';
+import { BlogController } from './blog.controller';
+import { BlogService } from './blog.service';
+
+@Module({
+  controllers: [BlogController],
+  providers: [BlogService],
+  exports: [BlogService],
+})
+export class BlogModule {}
+=== FILE: books.module.ts ===
+import { Module } from '@nestjs/common';
+import { BooksController } from './books.controller';
+import { BooksService } from './books.service';
+
+@Module({
+  controllers: [BooksController],
+  providers: [BooksService],
+  exports: [BooksService],
+})
+export class BooksModule {}
+=== FILE: cart.module.ts ===
+import { Module } from '@nestjs/common';
+import { CartController } from './cart.controller';
+import { CartService } from './cart.service';
+
+@Module({
+  controllers: [CartController],
+  providers: [CartService],
+  exports: [CartService],
+})
+export class CartModule {}
+=== FILE: contact.module.ts ===
+import { Module } from '@nestjs/common';
+import { ContactController } from './contact.controller';
+import { ContactService } from './contact.service';
+
+@Module({
+  controllers: [ContactController],
+  providers: [ContactService],
+  exports: [ContactService],
+})
+export class ContactModule {}
+=== FILE: orders.module.ts ===
+import { Module } from '@nestjs/common';
+import { OrdersController } from './orders.controller';
+import { OrdersService } from './orders.service';
+
+@Module({
+  controllers: [OrdersController],
+  providers: [OrdersService],
+  exports: [OrdersService],
+})
+export class OrdersModule {}
+=== FILE: reviews.module.ts ===
+import { Module } from '@nestjs/common';
+import { ReviewsController } from './reviews.controller';
+import { ReviewsService } from './reviews.service';
+
+@Module({
+  controllers: [ReviewsController],
+  providers: [ReviewsService],
+  exports: [ReviewsService],
+})
+export class ReviewsModule {}
+=== FILE: prisma.module.ts ===
+import { Global, Module } from '@nestjs/common';
+import { PrismaService } from './prisma.service';
+
+@Global()
+@Module({
+  providers: [PrismaService],
+  exports: [PrismaService],
+})
+export class PrismaModule {}
+=== FILE: app.module.ts ===
+import { Module } from '@nestjs/common';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { BooksModule } from './modules/books/books.module';
+import { CartModule } from './modules/cart/cart.module';
+import { OrdersModule } from './modules/orders/orders.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
+import { BlogModule } from './modules/blog/blog.module';
+import { ContactModule } from './modules/contact/contact.module';
+
+@Module({
+  imports: [
+    PrismaModule,
+    AuthModule,
+    BooksModule,
+    CartModule,
+    OrdersModule,
+    ReviewsModule,
+    BlogModule,
+    ContactModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}
+=== FILE: main.ts ===
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  // 1. Cho phÃ©p Frontend gá»i API (CORS)
+  app.enableCors();
+
+  // 2. Lá»c & Validate dá»¯ liá»‡u Ä‘áº§u vÃ o tá»± Ä‘á»™ng
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // 3. Khá»Ÿi táº¡o tÃ i liá»‡u Swagger OpenAPI
+  const config = new DocumentBuilder()
+    .setTitle('ThÆ° Háº£i E-Commerce API')
+    .setDescription('TÃ i liá»‡u API cho há»‡ thá»‘ng bÃ¡n sÃ¡ch cÅ© ThÆ° Háº£i')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api', app, document);
+
+  await app.listen(3000);
+}
+bootstrap();
